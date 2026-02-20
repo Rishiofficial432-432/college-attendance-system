@@ -100,7 +100,7 @@ if page == "👤 Enrol Students":
     st.subheader("Currently Enrolled")
     students = udb.get_all_students()   # returns list[dict] – no ORM objects
     if students:
-        st.dataframe(pd.DataFrame(students), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(students), use_container_width=True, hide_index=True)  # noqa
     else:
         st.info("No students enrolled yet.")
 
@@ -141,7 +141,7 @@ elif page == "🗓️ Create Session":
     st.subheader("All Sessions")
     sessions = udb.get_all_sessions()   # plain dicts – safe
     if sessions:
-        st.dataframe(pd.DataFrame(sessions), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(sessions), use_container_width=True, hide_index=True)  # noqa
     else:
         st.info("No sessions yet.")
 
@@ -276,7 +276,7 @@ elif page == "📊 Dashboard":
         if val == "Absent":  return "color:#f87171; font-weight:600"
         return ""
 
-    styled = view_df.style.applymap(colour_status, subset=["Status"])
+    styled = view_df.style.map(colour_status, subset=["Status"])
     st.dataframe(styled, use_container_width=True, hide_index=True)
 
     # ── CSV export ────────────────────────────────────────────────────────────
@@ -325,7 +325,7 @@ elif page == "📋 Audit Log":
             with col_img:
                 fp = log["frame_path"]
                 if os.path.isfile(fp):
-                    st.image(Image.open(fp), use_container_width=True)
+                    st.image(Image.open(fp), width=700)
                 else:
                     st.warning("Frame image not found on disk (may have been deleted).")
             with col_info:
