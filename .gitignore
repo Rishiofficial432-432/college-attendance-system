@@ -5,3 +5,9 @@ __pycache__/
 .env
 venv/
 .idea/
+
+# Runtime-generated (never commit these)
+attendance.db
+stored_frames/
+uploaded_videos/
+*.db
