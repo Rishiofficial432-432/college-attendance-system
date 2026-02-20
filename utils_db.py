@@ -138,3 +138,62 @@ def get_audit_logs(session_id: int) -> list[dict]:
             }
             for l in logs
         ]
+
+
+def get_audit_log_count(session_id: int) -> int:
+    with get_db() as db:
+        return db.query(AttendanceLog).filter(AttendanceLog.session_id == session_id).count()
+
+
+# ── Delete helpers ───────────────────────────────────────────────────────────
+
+def delete_student(student_id: int, dataset_base_dir: str = "attendance_system/dataset") -> str:
+    """
+    Remove a student from the DB (and their attendance records) and
+    delete their photo folder on disk.  Returns the student name.
+    """
+    import shutil, os
+    with get_db() as db:
+        stu = db.query(Student).filter(Student.id == student_id).first()
+        if not stu:
+            return "Unknown"
+        name = stu.name
+        # Delete attendance rows
+        db.query(Attendance).filter(Attendance.student_id == student_id).delete()
+        # Nullify audit-log references (keep the frame images)
+        db.query(AttendanceLog).filter(AttendanceLog.student_id == student_id)\
+                               .update({"student_id": None})
+        db.delete(stu)
+
+    # Delete photo folder on disk
+    folder = os.path.join(dataset_base_dir, name)
+    if os.path.isdir(folder):
+        shutil.rmtree(folder)
+
+    return name
+
+
+def delete_audit_logs(session_id: int, delete_images: bool = True) -> int:
+    """
+    Delete all audit-log rows for a session.
+    If delete_images=True, also remove the frame JPEG files from disk.
+    Returns the number of rows deleted.
+    """
+    import os
+    with get_db() as db:
+        logs = db.query(AttendanceLog)\
+                  .filter(AttendanceLog.session_id == session_id)\
+                  .all()
+        paths = [l.frame_path for l in logs]
+        count = len(logs)
+        db.query(AttendanceLog).filter(AttendanceLog.session_id == session_id).delete()
+
+    if delete_images:
+        for p in paths:
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+
+    return count
+

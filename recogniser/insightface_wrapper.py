@@ -58,23 +58,25 @@ class FaceMatcher:
         return face.embedding.astype(np.float32)
 
     # ------------------------------------------------------------------
-    def match(self, bgr_img: np.ndarray) -> tuple[int | None, str | None, float]:
+    def match(self, bgr_img: np.ndarray) -> tuple:
         """
         Detect faces in bgr_img, pick the largest, match against gallery.
 
         Returns
         -------
-        (student_id|None, student_name|None, cosine_similarity)
+        (student_id|None, student_name|None, cosine_similarity, bbox|None)
+        where bbox = [x1, y1, x2, y2] (integers) or None if no face found
         """
         if not self.id2emb:
-            return None, None, 0.0
+            return None, None, 0.0, None
 
         faces = self.app.get(bgr_img)
         if not faces:
-            return None, None, 0.0
+            return None, None, 0.0, None
 
         face = max(faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]))
-        emb = face.embedding.astype(np.float32)
+        bbox = [int(v) for v in face.bbox[:4]]   # [x1, y1, x2, y2]
+        emb  = face.embedding.astype(np.float32)
 
         best_id, best_name, best_score = None, None, -1.0
         for sid, stored_emb in self.id2emb.items():
@@ -84,5 +86,6 @@ class FaceMatcher:
                 best_name = self.id2name[sid]
 
         if best_score >= self.threshold:
-            return best_id, best_name, best_score
-        return None, None, best_score
+            return best_id, best_name, best_score, bbox
+        return None, None, best_score, bbox
+

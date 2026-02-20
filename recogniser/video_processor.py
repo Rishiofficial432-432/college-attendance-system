@@ -84,12 +84,23 @@ def process_video(
                 progress_callback(int((i + 1) / len(frame_idxs) * 100))
                 continue
 
-            stu_id, stu_name, conf = matcher.match(frame)
+            stu_id, stu_name, conf, bbox = matcher.match(frame)
 
-            # ── audit frame ────────────────────────────────────────────────
+            # ── draw bounding box on a copy of the frame ────────────────────
+            annotated = frame.copy()
+            if bbox is not None:
+                x1, y1, x2, y2 = bbox
+                color = (0, 200, 0) if stu_id is not None else (0, 0, 220)
+                cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
+                label = f"{stu_name} ({conf:.2f})" if stu_id else f"Unknown ({conf:.2f})"
+                cv2.putText(annotated, label,
+                            (x1, max(y1 - 8, 14)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+
+            # ── audit frame (annotated) ─────────────────────────────────────
             img_name = f"{uuid.uuid4().hex}.jpg"
             img_path = str(audit_root / img_name)
-            cv2.imwrite(img_path, frame)
+            cv2.imwrite(img_path, annotated)
             saved_paths.append(img_path)
 
             db.add(AttendanceLog(
@@ -98,7 +109,7 @@ def process_video(
                 frame_path=img_path,
                 frame_ts=fno / fps,
                 confidence=conf,
-                bbox=json.dumps([]),
+                bbox=json.dumps(bbox) if bbox else json.dumps([]),
             ))
 
             # ── first-time attendance (skip if already in DB) ───────────────
