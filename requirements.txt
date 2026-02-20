@@ -1,6 +1,10 @@
-insightface==0.7.3
-onnxruntime
+streamlit>=1.30
+sqlalchemy>=2.0
 opencv-python
+insightface>=0.7.3
+onnxruntime>=1.16
+pillow
+numpy
 pandas
-streamlit
+pyyaml
 tqdm
