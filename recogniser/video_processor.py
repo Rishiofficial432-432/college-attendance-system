@@ -70,6 +70,13 @@ def process_video(
             cap.release()
             raise RuntimeError(f"Session {session_id} not found in DB")
 
+        # ── Pre-load students already marked present for this session ──────────
+        # Handles re-processing the same video: avoids UNIQUE constraint errors.
+        existing = db.query(Attendance.student_id)\
+                     .filter(Attendance.session_id == session_id)\
+                     .all()
+        present_ids = {row[0] for row in existing}
+
         for i, fno in enumerate(frame_idxs):
             cap.set(cv2.CAP_PROP_POS_FRAMES, fno)
             ok, frame = cap.read()
@@ -87,26 +94,32 @@ def process_video(
 
             db.add(AttendanceLog(
                 session_id=session_id,
-                student_id=stu_id,        # None if unknown
+                student_id=stu_id,
                 frame_path=img_path,
                 frame_ts=fno / fps,
                 confidence=conf,
                 bbox=json.dumps([]),
             ))
 
-            # ── first-time attendance ───────────────────────────────────────
+            # ── first-time attendance (skip if already in DB) ───────────────
             if stu_id is not None and stu_id not in present_ids:
-                db.add(Attendance(
-                    session_id=session_id,
-                    student_id=stu_id,
-                    first_seen=datetime.datetime.utcnow(),
-                    confidence=conf,
-                ))
-                present_ids.add(stu_id)
+                try:
+                    db.add(Attendance(
+                        session_id=session_id,
+                        student_id=stu_id,
+                        first_seen=datetime.datetime.utcnow(),
+                        confidence=conf,
+                    ))
+                    db.flush()           # catch constraint violations early
+                    present_ids.add(stu_id)
+                except Exception:
+                    db.rollback()        # discard only this failed INSERT
+                    present_ids.add(stu_id)
 
             progress_callback(int((i + 1) / len(frame_idxs) * 100))
 
         # commit happens at exit of context manager
+
 
     cap.release()
 
