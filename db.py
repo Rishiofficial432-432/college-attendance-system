@@ -6,7 +6,8 @@ from sqlalchemy.orm import sessionmaker
 
 DB_URL = os.getenv("DATABASE_URL", "sqlite:///attendance.db")
 engine = create_engine(DB_URL, connect_args={"check_same_thread": False})
-SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False,
+                           expire_on_commit=False)   # keeps scalar values after session closes
 
 
 def init_db():
