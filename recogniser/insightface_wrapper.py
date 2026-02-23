@@ -2,12 +2,14 @@
 import numpy as np
 import insightface
 import sys, os
+import cv2
 
 # Allow root-level imports (db, models, config) when running from project dir
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from db import get_db
 from models import Student
+from config import cfg
 
 
 class FaceMatcher:
@@ -18,13 +20,18 @@ class FaceMatcher:
       match(bgr_img) -> (student_id|None, student_name|None, cosine_similarity)
     """
 
-    def __init__(self, presence_threshold: float = 0.45):
-        # Load model – CPU by default.  For GPU: ctx_id=0, providers=['CUDAExecutionProvider']
+    def __init__(self, presence_threshold: float = 0.45, det_size: tuple = None):
+        # Get detection size from config or use default for better detection
+        if det_size is None:
+            det_size = tuple(cfg.get("detection_size", [640, 640]))
+        
+        # Load model – CPU by default. For GPU: ctx_id=0, providers=['CUDAExecutionProvider']
         self.app = insightface.app.FaceAnalysis(
             name="buffalo_l",
             providers=["CPUExecutionProvider"]
         )
-        self.app.prepare(ctx_id=-1)   # -1 = CPU
+        self.app.prepare(ctx_id=-1, det_size=det_size)
+        self.det_size = det_size
 
         self.threshold = presence_threshold
         self._load_gallery()
@@ -48,14 +55,22 @@ class FaceMatcher:
     def _cosine(a: np.ndarray, b: np.ndarray) -> float:
         return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-12))
 
+    @staticmethod
+    def _normalise(v: np.ndarray) -> np.ndarray:
+        """L2-normalise so cosine similarity == dot product."""
+        norm = np.linalg.norm(v)
+        return v / (norm + 1e-12)
+
     # ------------------------------------------------------------------
     def get_embedding(self, bgr_img: np.ndarray) -> np.ndarray | None:
-        """Return the ArcFace embedding for the largest face in the image, or None."""
+        """Return the L2-normalised ArcFace embedding for the largest face, or None."""
         faces = self.app.get(bgr_img)
         if not faces:
             return None
+        
+        # Pick the largest face
         face = max(faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]))
-        return face.embedding.astype(np.float32)
+        return self._normalise(face.embedding.astype(np.float32))
 
     # ------------------------------------------------------------------
     def match(self, bgr_img: np.ndarray) -> tuple:
@@ -65,7 +80,7 @@ class FaceMatcher:
         Returns
         -------
         (student_id|None, student_name|None, cosine_similarity, bbox|None)
-        where bbox = [x1, y1, x2, y2] (integers) or None if no face found
+        where bbox = [x1, y1, x2, y2] (integers) in original image coordinates, or None if no face found
         """
         if not self.id2emb:
             return None, None, 0.0, None
@@ -74,9 +89,12 @@ class FaceMatcher:
         if not faces:
             return None, None, 0.0, None
 
+        # Pick the largest face
         face = max(faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]))
-        bbox = [int(v) for v in face.bbox[:4]]   # [x1, y1, x2, y2]
-        emb  = face.embedding.astype(np.float32)
+        
+        # Get bounding box
+        bbox = [int(v) for v in face.bbox[:4]]
+        emb  = self._normalise(face.embedding.astype(np.float32))
 
         best_id, best_name, best_score = None, None, -1.0
         for sid, stored_emb in self.id2emb.items():
@@ -89,3 +107,46 @@ class FaceMatcher:
             return best_id, best_name, best_score, bbox
         return None, None, best_score, bbox
 
+    def detect_all(self, bgr_img: np.ndarray) -> list:
+        """
+        Detect all faces in an image and match against gallery.
+        
+        Returns
+        -------
+        list of dicts with keys: student_id, student_name, confidence, bbox
+        """
+        if not self.id2emb:
+            return []
+
+        faces = self.app.get(bgr_img)
+        if not faces:
+            return []
+
+        results = []
+        for face in faces:
+            bbox = [int(v) for v in face.bbox[:4]]
+            emb = self._normalise(face.embedding.astype(np.float32))
+
+            best_id, best_name, best_score = None, None, -1.0
+            for sid, stored_emb in self.id2emb.items():
+                score = self._cosine(emb, stored_emb)
+                if score > best_score:
+                    best_score, best_id = score, sid
+                    best_name = self.id2name.get(sid)
+
+            if best_score >= self.threshold:
+                results.append({
+                    'student_id': best_id,
+                    'student_name': best_name,
+                    'confidence': best_score,
+                    'bbox': bbox
+                })
+            else:
+                results.append({
+                    'student_id': None,
+                    'student_name': 'Unknown',
+                    'confidence': best_score,
+                    'bbox': bbox
+                })
+
+        return results

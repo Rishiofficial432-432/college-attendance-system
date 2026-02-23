@@ -6,6 +6,11 @@ presence_threshold: 0.45       # cosine similarity >= this -> present
 max_frames_to_process: 1000    # safety guard for huge videos
 
 # -----------------------------------------------------------------
+# Face detection settings
+# -----------------------------------------------------------------
+detection_size: [640, 640]     # detection input size (larger = slower but may detect smaller faces)
+
+# -----------------------------------------------------------------
 # Paths
 # -----------------------------------------------------------------
 upload_folder: uploaded_videos

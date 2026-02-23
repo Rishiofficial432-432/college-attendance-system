@@ -7,7 +7,21 @@
 import pandas as pd
 import datetime
 from db import get_db
-from models import Student, Session as DBSession, Attendance, AttendanceLog
+from models import Student, Session as DBSession, Attendance, AttendanceLog, Course
+
+
+# ── Courses ─────────────────────────────────────────────────────────────────
+
+def get_all_courses() -> list[dict]:
+    """Return all courses as plain dicts."""
+    with get_db() as db:
+        rows = db.query(Course).order_by(Course.code).all()
+        return [{"id": c.id, "code": c.code, "name": c.name} for c in rows]
+
+
+def get_course_count() -> int:
+    with get_db() as db:
+        return db.query(Course).count()
 
 
 # ── Students ────────────────────────────────────────────────────────────────
@@ -33,12 +47,12 @@ def get_distinct_dates() -> list:
         return [r[0] for r in rows]
 
 
-def get_sessions_for_date(date_obj) -> list[dict]:
-    """Return sessions on a given date as plain dicts."""
+def get_sessions_for_course(course_id: int) -> list[dict]:
+    """Return all sessions for a specific course as plain dicts."""
     with get_db() as db:
         sessions = (db.query(DBSession)
-                      .filter(DBSession.date == date_obj)
-                      .order_by(DBSession.start_time)
+                      .filter(DBSession.course_id == course_id)
+                      .order_by(DBSession.date.desc(), DBSession.start_time)
                       .all())
         return [
             {
@@ -105,7 +119,8 @@ def get_attendance_dataframe(session_id: int) -> pd.DataFrame:
                 "First Seen": seen,
                 "Confidence": conf,
             })
-        return pd.DataFrame(data)
+        return pd.DataFrame(data, columns=["ID", "Name", "Status", "First Seen", "Confidence"])
+
 
 
 # ── Audit log ───────────────────────────────────────────────────────────────

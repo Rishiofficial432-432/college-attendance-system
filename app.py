@@ -53,15 +53,58 @@ st.sidebar.title("Attendance System")
 st.sidebar.markdown("---")
 page = st.sidebar.radio(
     "Navigate",
-    ["📊 Dashboard", "👤 Enrol Students", "🗓️ Create Session",
+    ["📊 Dashboard", "🗂️ Manage Courses", "👤 Enrol Students", "🗓️ Create Session",
      "📽️ Upload Video", "📋 Audit Log"],
 )
 st.sidebar.markdown(f"**Enrolled students:** {udb.get_student_count()}")
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 1️⃣  ENROL STUDENTS
+# 1️⃣  MANAGE COURSES
 # ─────────────────────────────────────────────────────────────────────────────
-if page == "👤 Enrol Students":
+if page == "🗂️ Manage Courses":
+    st.title("🗂️ Manage Course Categories")
+    st.write("Each session must belong to a course.")
+
+    with st.expander("➕ Add a New Course", expanded=True):
+        c_code = st.text_input("Course Code", placeholder="e.g. CS101")
+        c_name = st.text_input("Course Name", placeholder="e.g. Machine Learning")
+        if st.button("➕ Create Course", type="primary"):
+            if not c_code or not c_name:
+                st.error("Both code and name are required.")
+            else:
+                with get_db() as db:
+                    from models import Course
+                    existing = db.query(Course).filter(Course.code == c_code.upper()).first()
+                    if existing:
+                        st.error(f"Course {c_code.upper()} already exists.")
+                    else:
+                        db.add(Course(code=c_code.upper(), name=c_name))
+                        st.success(f"✅ Added {c_code.upper()}!")
+                        st.rerun()
+
+    st.markdown("---")
+    st.subheader("Existing Courses")
+    courses = udb.get_all_courses()
+    if courses:
+        for c in courses:
+            col1, col2, col3 = st.columns([2, 4, 1])
+            col1.write(f"**{c['code']}**")
+            col2.write(c["name"])
+            if col3.button("🗑️", key=f"del_c_{c['id']}"):
+                with get_db() as db:
+                    from models import Course
+                    obj = db.query(Course).get(c["id"])
+                    if obj:
+                        db.delete(obj)
+                        st.warning(f"Deleted {c['code']}")
+                        st.rerun()
+    else:
+        st.info("No courses yet.")
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 2️⃣  ENROL STUDENTS
+# ─────────────────────────────────────────────────────────────────────────────
+elif page == "👤 Enrol Students":
     st.title("👤 Enrol a New Student")
     st.write("Upload a clear, well-lit portrait. The ArcFace embedding is computed and stored.")
 
@@ -81,16 +124,29 @@ if page == "👤 Enrol Students":
         if emb is None:
             st.error("❌ No face detected. Please upload a clearer portrait.")
         else:
+            # ── Create students/<name>/ folder and save portrait ────────────
+            safe_name   = "".join(c if c.isalnum() or c in " _-" else "_" 
+                                  for c in name).strip()
+            student_dir = Path("students") / safe_name
+            student_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Save the portrait
+            img_dest = student_dir / "1.jpg"
+            cv2.imwrite(str(img_dest), bgr)
+
             with get_db() as db:
                 existing = db.query(Student).filter(Student.name == name).first()
                 if existing:
-                    existing.embedding = emb.tobytes()
+                    existing.embedding  = emb.tobytes()
+                    existing.photo_path = str(student_dir)
                     st.warning(f"⚠️ **{name}** already existed — embedding updated.")
                 else:
-                    db.add(Student(name=name, embedding=emb.tobytes()))
-                    st.success(f"✅ **{name}** enrolled!")
+                    db.add(Student(name=name, embedding=emb.tobytes(), photo_path=str(student_dir)))
+                    st.success(f"✅ **{name}** enrolled! Portrait saved to `students/{safe_name}/`")
+
             matcher.reload()
             st.rerun()
+
 
     # ── Enrolled list + per-student delete ───────────────────────────────────
     st.markdown("---")
@@ -127,7 +183,15 @@ if page == "👤 Enrol Students":
 elif page == "🗓️ Create Session":
     st.title("🗓️ Create a Class Session")
 
+    courses = udb.get_all_courses()
+    if not courses:
+        st.warning("⚠️ Create a course first (Manage Courses page).")
+        st.stop()
+
+    course_map = {f"{c['code']} - {c['name']}": c["id"] for c in courses}
+    
     with st.form("session_form"):
+        selected_course = st.selectbox("Select Course *", list(course_map.keys()))
         title = st.text_input("Session title *", placeholder="e.g. ML Lecture – Week 6")
         col1, col2, col3 = st.columns(3)
         with col1: date  = st.date_input("Date *", datetime.date.today())
@@ -137,14 +201,15 @@ elif page == "🗓️ Create Session":
         submitted = st.form_submit_button("➕ Create Session", type="primary")
 
     if submitted:
+        course_id = course_map[selected_course]
         if not title:
             st.error("Title is required.")
         elif end <= start:
             st.error("End time must be after start time.")
         else:
             with get_db() as db:
-                ns = DBSession(title=title, date=date, start_time=start,
-                               end_time=end, description=descr)
+                ns = DBSession(course_id=course_id, title=title, date=date, 
+                               start_time=start, end_time=end, description=descr)
                 db.add(ns)
                 db.flush()
                 sid = ns.id
@@ -165,13 +230,22 @@ elif page == "📽️ Upload Video":
     st.title("📽️ Process a Recorded Class Video")
 
     # ── Session picker ────────────────────────────────────────────────────────
-    all_sessions = udb.get_all_sessions()
+    # ── Course & Session picker ───────────────────────────────────────────────
+    courses = udb.get_all_courses()
+    if not courses:
+        st.warning("⚠️ No courses found. Add one in 'Manage Courses'.")
+        st.stop()
+    
+    c_map = {f"{c['code']} - {c['name']}": c["id"] for c in courses}
+    c_label = st.selectbox("Filter by Course", list(c_map.keys()))
+    course_id = c_map[c_label]
+
+    all_sessions = udb.get_sessions_for_course(course_id)
     if not all_sessions:
-        st.warning("⚠️ No sessions found. Create one first.")
+        st.warning(f"⚠️ No sessions found for {c_label}. Create one first.")
         st.stop()
 
-    session_map    = {f"{s['title']}  [{s['date']}]  (ID {s['id']})": s["id"]
-                      for s in all_sessions}
+    session_map    = {f"{s['title']} [{s['date']}]": s["id"] for s in all_sessions}
     selected_label = st.selectbox("Select session", list(session_map.keys()))
     session_id     = session_map[selected_label]
 
@@ -309,27 +383,35 @@ elif page == "📽️ Upload Video":
 elif page == "📊 Dashboard":
     st.title("📊 Attendance Dashboard")
 
-    date_list = udb.get_distinct_dates()
-    if not date_list:
-        st.info("No sessions recorded yet.")
+    courses = udb.get_all_courses()
+    if not courses:
+        st.info("No courses recorded yet.")
         st.stop()
 
-    chosen_date  = st.selectbox("Select date", date_list, format_func=lambda d: str(d))
-    day_sessions = udb.get_sessions_for_date(chosen_date)
+    c_map = {f"{c['code']} - {c['name']}": c["id"] for c in courses}
+    c_label = st.selectbox("Course", list(c_map.keys()))
+    course_id = c_map[c_label]
+
+    day_sessions = udb.get_sessions_for_course(course_id)
     if not day_sessions:
-        st.info("No sessions on this date.")
+        st.info(f"No sessions for {c_label} yet.")
         st.stop()
 
-    sess_map  = {f"{s['title']} ({s['start_time']}–{s['end_time']})": s["id"]
+    sess_map  = {f"{s['title']} ({s['date']})" : s["id"]
                  for s in day_sessions}
     sel_label = st.selectbox("Session", list(sess_map.keys()))
     sess_id   = sess_map[sel_label]
 
     df        = udb.get_attendance_dataframe(sess_id)
+    if df.empty:
+        st.warning("⚠️ No students enrolled yet. Please enrol students first.")
+        st.stop()
+
     n_total   = len(df)
     n_present = int((df["Status"] == "Present").sum())
     n_absent  = n_total - n_present
     pct       = round(n_present / n_total * 100) if n_total else 0
+
 
     # Metrics
     c1, c2, c3, c4 = st.columns(4)
@@ -369,14 +451,23 @@ elif page == "📊 Dashboard":
 elif page == "📋 Audit Log":
     st.title("📋 Audit Log – Sampled Frames")
 
-    all_sessions = udb.get_all_sessions()
+    courses = udb.get_all_courses()
+    if not courses:
+        st.warning("No courses found. Add one in 'Manage Courses'.")
+        st.stop()
+    
+    c_map = {f"{c['code']} - {c['name']}": c["id"] for c in courses}
+    c_label = st.selectbox("Filter by Course", list(c_map.keys()))
+    course_id = c_map[c_label]
+
+    all_sessions = udb.get_sessions_for_course(course_id)
     if not all_sessions:
-        st.info("No sessions yet.")
+        st.info(f"No sessions for {c_label} yet.")
         st.stop()
 
-    sess_map = {f"[{s['date']}] {s['title']} (ID {s['id']})": s["id"]
+    sess_map = {f"{s['title']} ({s['date']})" : s["id"]
                 for s in all_sessions}
-    sel      = st.selectbox("Session", list(sess_map.keys()))
+    sel      = st.selectbox("Select session to view audit log", list(sess_map.keys()))
     sess_id  = sess_map[sel]
 
     log_count = udb.get_audit_log_count(sess_id)
