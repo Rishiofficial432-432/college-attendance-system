@@ -1,13 +1,18 @@
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
-.DS_Store
-.env
 venv/
-.idea/
 
-# Runtime-generated (never commit these)
-attendance.db
-stored_frames/
+# Environment and OS
+.env
+.DS_Store
+.idea/
+.vscode/
+
+# Project Specific - Local Data (Never commit portraits or videos)
+students/
 uploaded_videos/
+stored_frames/
 *.db
+*.log
