@@ -1,4 +1,6 @@
-# config.py ---------------------------------------------------------
+"""
+Configuration loader for the attendance system.
+"""
 import yaml
 from pathlib import Path
 

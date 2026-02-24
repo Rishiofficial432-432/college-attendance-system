@@ -1,4 +1,6 @@
-# recogniser/video_processor.py ------------------------------------
+"""
+Core logic for processing video files and extracting attendance data.
+"""
 import cv2
 import os
 import json
@@ -206,7 +208,7 @@ def process_video(
 
         progress_callback(int((i + 1) / len(frame_idxs) * 100))
 
-    # ── After scanning all frames, persist the BEST detections ───────────────
+# After scanning all frames, persist the best detections to the database
     present_ids: set[int] = set()
     saved_paths: list[str] = []
 
@@ -217,7 +219,7 @@ def process_video(
                 cap.release()
             raise RuntimeError(f"Session {session_id} not found in DB")
 
-        # ── RESET SESSION: Clear existing results to ensure a fresh start ──────
+# Reset session: Clear existing results to ensure a fresh start
         # 1. Delete old face crops from disk
         old_logs = db.query(AttendanceLog).filter(AttendanceLog.session_id == session_id).all()
         for l in old_logs:
@@ -239,7 +241,7 @@ def process_video(
             frame = info['frame']
             fno = info['fno']
 
-            # ── Crop Face ─────────────────────────────────────────────
+# Crop face from original frame for audit purposes
             x1, y1, x2, y2 = bbox
             h, w = frame.shape[:2]
             
@@ -265,7 +267,7 @@ def process_video(
             cv2.imwrite(img_path, face_crop)
             saved_paths.append(img_path)
 
-            # ── persistence ───────────────────────────────────────────
+# Persist individual detections and attendance status
             # Add to Log
             db.add(AttendanceLog(
                 session_id=session_id,

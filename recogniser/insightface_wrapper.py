@@ -1,4 +1,6 @@
-# recogniser/insightface_wrapper.py --------------------------------
+"""
+Wrapper for InsightFace models to perform face detection and embedding extraction.
+"""
 import numpy as np
 import insightface
 import sys, os
@@ -36,7 +38,6 @@ class FaceMatcher:
         self.threshold = presence_threshold
         self._load_gallery()
 
-    # ------------------------------------------------------------------
     def _load_gallery(self):
         """Reload embeddings from DB into memory."""
         self.id2emb: dict[int, np.ndarray] = {}
@@ -50,7 +51,6 @@ class FaceMatcher:
         """Call after enrolling a new student so in-memory gallery is fresh."""
         self._load_gallery()
 
-    # ------------------------------------------------------------------
     @staticmethod
     def _cosine(a: np.ndarray, b: np.ndarray) -> float:
         return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-12))
@@ -61,7 +61,6 @@ class FaceMatcher:
         norm = np.linalg.norm(v)
         return v / (norm + 1e-12)
 
-    # ------------------------------------------------------------------
     def get_embedding(self, bgr_img: np.ndarray) -> np.ndarray | None:
         """Return the L2-normalised ArcFace embedding for the largest face, or None."""
         faces = self.app.get(bgr_img)
@@ -70,9 +69,7 @@ class FaceMatcher:
         
         # Pick the largest face
         face = max(faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]))
-        return self._normalise(face.embedding.astype(np.float32))
 
-    # ------------------------------------------------------------------
     def match(self, bgr_img: np.ndarray) -> tuple:
         """
         Detect faces in bgr_img, pick the largest, match against gallery.
