@@ -166,11 +166,48 @@ def process_video(
         return {"present_ids": set(), "processed_frames": 0}
 
     matcher = FaceMatcher(presence_threshold=threshold)
-    present_ids: set[int] = set()
+    
+    # dictionary: student_id -> { 'conf': float, 'bbox': list, 'frame': np.ndarray, 'fno': int }
+    best_detections: dict[int, dict] = {}
 
     audit_root = pathlib.Path(cfg.get("audit_frames_folder", "stored_frames"))
     audit_root.mkdir(parents=True, exist_ok=True)
 
+    for i, fno in enumerate(frame_idxs):
+        # Extract frame either via OpenCV or ffmpeg
+        if use_ffmpeg:
+            timestamp_sec = fno / fps
+            frame = _extract_frame_ffmpeg(video_path, timestamp_sec, width, height)
+            ok = frame is not None
+        else:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, fno)
+            ok, frame = cap.read()
+        
+        if not ok or frame is None:
+            progress_callback(int((i + 1) / len(frame_idxs) * 100))
+            continue
+
+        results = matcher.detect_all(frame)
+
+        for res in results:
+            stu_id = res['student_id']
+            conf = res['confidence']
+            bbox = res['bbox']
+
+            if stu_id is not None:
+                # Update best detection if current one is better
+                if stu_id not in best_detections or conf > best_detections[stu_id]['conf']:
+                    best_detections[stu_id] = {
+                        'conf': conf,
+                        'bbox': bbox,
+                        'frame': frame.copy(),
+                        'fno': fno
+                    }
+
+        progress_callback(int((i + 1) / len(frame_idxs) * 100))
+
+    # ── After scanning all frames, persist the BEST detections ───────────────
+    present_ids: set[int] = set()
     saved_paths: list[str] = []
 
     with get_db() as db:
@@ -180,89 +217,75 @@ def process_video(
                 cap.release()
             raise RuntimeError(f"Session {session_id} not found in DB")
 
-        # ── Pre-load students already marked present for this session ──────────
-        existing = db.query(Attendance.student_id)\
-                     .filter(Attendance.session_id == session_id)\
-                     .all()
-        present_ids = {row[0] for row in existing}
+        # ── RESET SESSION: Clear existing results to ensure a fresh start ──────
+        # 1. Delete old face crops from disk
+        old_logs = db.query(AttendanceLog).filter(AttendanceLog.session_id == session_id).all()
+        for l in old_logs:
+            if l.frame_path and os.path.isfile(l.frame_path):
+                try: os.remove(l.frame_path)
+                except: pass
+        
+        # 2. Clear DB tables
+        db.query(AttendanceLog).filter(AttendanceLog.session_id == session_id).delete()
+        db.query(Attendance).filter(Attendance.session_id == session_id).delete()
+        db.flush()
 
-        for i, fno in enumerate(frame_idxs):
-            # Extract frame either via OpenCV or ffmpeg
-            if use_ffmpeg:
-                timestamp_sec = fno / fps
-                frame = _extract_frame_ffmpeg(video_path, timestamp_sec, width, height)
-                ok = frame is not None
-            else:
-                cap.set(cv2.CAP_PROP_POS_FRAMES, fno)
-                ok, frame = cap.read()
+        # Now already_present will be empty since we just cleared it
+        already_present = set()
+
+        for stu_id, info in best_detections.items():
+            conf = info['conf']
+            bbox = info['bbox']
+            frame = info['frame']
+            fno = info['fno']
+
+            # ── Crop Face ─────────────────────────────────────────────
+            x1, y1, x2, y2 = bbox
+            h, w = frame.shape[:2]
             
-            if not ok or frame is None:
-                progress_callback(int((i + 1) / len(frame_idxs) * 100))
-                continue
+            # Add some padding (20%)
+            pad_w = int((x2 - x1) * 0.2)
+            pad_h = int((y2 - y1) * 0.2)
+            
+            crop_x1 = max(0, x1 - pad_w)
+            crop_y1 = max(0, y1 - pad_h)
+            crop_x2 = min(w, x2 + pad_w)
+            crop_y2 = min(h, y2 + pad_h)
+            
+            face_crop = frame[crop_y1:crop_y2, crop_x1:crop_x2]
+            
+            # Annotate crop (optional but helpful)
+            # Re-calculating bbox relative to crop for display
+            rel_x1, rel_y1 = x1 - crop_x1, y1 - crop_y1
+            rel_x2, rel_y2 = x2 - crop_x1, y2 - crop_y1
+            cv2.rectangle(face_crop, (rel_x1, rel_y1), (rel_x2, rel_y2), (0, 200, 0), 2)
 
-            results = matcher.detect_all(frame)
-
-            # ── Draw all bounding boxes on a single copy of the frame ───────
-            annotated = frame.copy()
-            for res in results:
-                bbox = res['bbox']
-                stu_id = res['student_id']
-                stu_name = res['student_name']
-                conf = res['confidence']
-                
-                x1, y1, x2, y2 = bbox
-                color = (0, 200, 0) if stu_id is not None else (0, 0, 220)
-                cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
-                label = f"{stu_name} ({conf:.2f})"
-                cv2.putText(annotated, label,
-                            (x1, max(y1 - 8, 14)),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
-
-            # ── Save the annotated frame (once per frame index) ─────────────
             img_name = f"{uuid.uuid4().hex}.jpg"
             img_path = str(audit_root / img_name)
-            cv2.imwrite(img_path, annotated)
+            cv2.imwrite(img_path, face_crop)
             saved_paths.append(img_path)
 
-            # ── Process each detected face (Log + Attendance) ───────────────
-            if not results:
-                # Still log an entry for empty frames if we want to track coverage?
-                # Actually, current schema expects a log per face.
-                # If no faces, we skip log insertion to save space.
-                pass
-            
-            for res in results:
-                stu_id = res['student_id']
-                conf = res['confidence']
-                bbox = res['bbox']
+            # ── persistence ───────────────────────────────────────────
+            # Add to Log
+            db.add(AttendanceLog(
+                session_id=session_id,
+                student_id=stu_id,
+                frame_path=img_path,
+                frame_ts=fno / fps,
+                confidence=conf,
+                bbox=json.dumps(bbox),
+            ))
 
-                # Add to Log
-                db.add(AttendanceLog(
+            # Add to Attendance
+            if stu_id not in already_present:
+                db.add(Attendance(
                     session_id=session_id,
                     student_id=stu_id,
-                    frame_path=img_path,
-                    frame_ts=fno / fps,
+                    first_seen=datetime.datetime.utcnow(),
                     confidence=conf,
-                    bbox=json.dumps(bbox),
                 ))
-
-                # Add to Attendance (if matched and not already present)
-                if stu_id is not None and stu_id not in present_ids:
-                    try:
-                        db.add(Attendance(
-                            session_id=session_id,
-                            student_id=stu_id,
-                            first_seen=datetime.datetime.utcnow(),
-                            confidence=conf,
-                        ))
-                        db.flush()
-                        present_ids.add(stu_id)
-                    except Exception:
-                        db.rollback()
-                        present_ids.add(stu_id)
-
-            progress_callback(int((i + 1) / len(frame_idxs) * 100))
-
+            
+            present_ids.add(stu_id)
 
     if cap:
         cap.release()

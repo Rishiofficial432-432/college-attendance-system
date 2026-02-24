@@ -1,4 +1,6 @@
-# models.py ---------------------------------------------------------
+"""
+Database models representing courses, students, sessions, and attendance.
+"""
 from sqlalchemy import (Column, Integer, String, Date, Time,
                         DateTime, Float, LargeBinary,
                         Text, ForeignKey, UniqueConstraint)

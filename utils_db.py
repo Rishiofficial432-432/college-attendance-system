@@ -1,16 +1,15 @@
-# utils_db.py -------------------------------------------------------
-# Safe query helpers – every function opens its own short-lived session,
-# materialises the data into plain Python objects, and closes the session.
-# These dicts / DataFrames are detached from SQLAlchemy and safe to use
-# anywhere in Streamlit without triggering DetachedInstanceError.
+"""
+Database utility functions for performing common queries and operations.
+All functions use a short-lived session to ensure data is detached from SQLAlchemy
+and safe for use in Streamlit.
+"""
 
 import pandas as pd
 import datetime
 from db import get_db
 from models import Student, Session as DBSession, Attendance, AttendanceLog, Course
 
-
-# ── Courses ─────────────────────────────────────────────────────────────────
+# Course-related helpers
 
 def get_all_courses() -> list[dict]:
     """Return all courses as plain dicts."""
@@ -24,7 +23,7 @@ def get_course_count() -> int:
         return db.query(Course).count()
 
 
-# ── Students ────────────────────────────────────────────────────────────────
+# Student-related helpers
 
 def get_all_students() -> list[dict]:
     """Return all students as plain dicts (safe after session closes)."""
@@ -38,7 +37,7 @@ def get_student_count() -> int:
         return db.query(Student).count()
 
 
-# ── Sessions ────────────────────────────────────────────────────────────────
+# Session-related helpers
 
 def get_distinct_dates() -> list:
     """Return list of distinct session dates, newest first."""
@@ -83,7 +82,7 @@ def get_all_sessions() -> list[dict]:
         ]
 
 
-# ── Attendance ──────────────────────────────────────────────────────────────
+# Attendance-related helpers
 
 def get_attendance_dataframe(session_id: int) -> pd.DataFrame:
     """
@@ -123,7 +122,7 @@ def get_attendance_dataframe(session_id: int) -> pd.DataFrame:
 
 
 
-# ── Audit log ───────────────────────────────────────────────────────────────
+# Audit log helpers
 
 def get_audit_logs(session_id: int) -> list[dict]:
     """
@@ -160,7 +159,7 @@ def get_audit_log_count(session_id: int) -> int:
         return db.query(AttendanceLog).filter(AttendanceLog.session_id == session_id).count()
 
 
-# ── Delete helpers ───────────────────────────────────────────────────────────
+# Deletion helpers
 
 def delete_student(student_id: int, dataset_base_dir: str = "attendance_system/dataset") -> str:
     """
@@ -201,7 +200,10 @@ def delete_audit_logs(session_id: int, delete_images: bool = True) -> int:
                   .all()
         paths = [l.frame_path for l in logs]
         count = len(logs)
+        # 1. Delete audit logs
         db.query(AttendanceLog).filter(AttendanceLog.session_id == session_id).delete()
+        # 2. Delete attendance records (Reset session status)
+        db.query(Attendance).filter(Attendance.session_id == session_id).delete()
 
     if delete_images:
         for p in paths:

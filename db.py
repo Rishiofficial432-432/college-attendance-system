@@ -1,8 +1,19 @@
-# db.py --------------------------------------------------------------
+"""
+Database connection and session management using SQLAlchemy.
+"""
 import os
 from contextlib import contextmanager
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+try:
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+except ImportError:
+    import sys
+    print("\n[!] ERROR: 'sqlalchemy' is not installed.")
+    print(f"[*] Current Python: {sys.executable}")
+    print("[*] Please ensure you have activated your virtual environment:")
+    print("    source venv/bin/activate")
+    print("[*] Then run: streamlit run app.py\n")
+    sys.exit(1)
 
 DB_URL = os.getenv("DATABASE_URL", "sqlite:///attendance.db")
 engine = create_engine(DB_URL, connect_args={"check_same_thread": False})

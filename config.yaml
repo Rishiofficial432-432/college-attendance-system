@@ -2,7 +2,7 @@
 # Sampling & recognition
 # -----------------------------------------------------------------
 frame_interval_sec: 5          # take a frame every N seconds
-presence_threshold: 0.45       # cosine similarity >= this -> present
+presence_threshold: 0.65       # increased for better accuracy (cosine similarity >= this -> present)
 max_frames_to_process: 1000    # safety guard for huge videos
 
 # -----------------------------------------------------------------

@@ -1,0 +1,13 @@
+[server]
+maxUploadSize = 10000
+runOnSave = false
+headless = false
+address = "127.0.0.1"
+port = 8501
+enableWebsocketCompression = false
+
+[browser]
+gatherUsageStats = false
+
+[runner]
+# Deleted invalid fastRerun
