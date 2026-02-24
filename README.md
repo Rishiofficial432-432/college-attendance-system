@@ -1,77 +1,76 @@
-# 🎓 College Attendance System
+# 🎓 AI-Powered College Attendance System
 
-A generic and automated attendance system using Face Recognition technology. This project aims to replace manual attendance marking with a seamless, contactless, and efficient solution using Computer Vision.
+A modern, automated attendance tracking solution powered by Computer Vision. This system uses face recognition to streamline attendance marking, replacing manual registers with a seamless digital workflow.
 
-## 🚀 Features
+[![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)](https://www.python.org/)
+[![Streamlit](https://img.shields.io/badge/Streamlit-1.30+-FF4B4B.svg)](https://streamlit.io/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-- **Face Enrollment**: Capture and store student face data for training.
-- **Automated Detection (Upcoming)**: Real-time face detection from a camera feed.
-- **Attendance Logging (Upcoming)**: Mark attendance automatically when a registered face is recognized.
-- **CSV Export (Upcoming)**: Export attendance records for administration.
+## 🌟 Key Features
+
+*   **👤 Biometric Enrollment**: Enroll students by capturing high-quality facial embeddings using ArcFace/InsightFace.
+*   **📂 Course & Session Management**: Organize attendance by specific courses and individual class sessions.
+*   **📽️ Video-Based Attendance**: Process recorded class videos to automatically detect and mark present students.
+*   **📊 Insightful Dashboard**: Real-time analytics and attendance percentages for every session.
+*   **📋 Audit Logs**: Transparent verification system with sampled frames showing exactly when a student was recognized.
+*   **📥 Data Export**: Export attendance records directly to CSV for administrative use.
 
 ## 🛠️ Tech Stack
 
-- **Python 3.x**
-- **OpenCV**: For image processing and face detection.
-- **Numpy**: For numerical operations.
-- **Haar Cascades**: Pre-trained models for face detection.
+*   **Frontend**: Streamlit (Modern Web UI)
+*   **Computer Vision**: InsightFace (ArcFace), OpenCV, ONNX Runtime
+*   **Database**: SQLite with SQLAlchemy ORM
+*   **Data Handling**: Pandas, NumPy
+*   **Config Management**: PyYAML
 
-## 📂 Project Structure
+## 🚀 Getting Started
 
-```
-COLLEGE-ATTENDANCE-SYSTEM/
-│
-├── attendance_system/
-│   ├── dataset/              # Stores captured face images
-│   │   └── person_1/         # Images for a specific user
-│   │
-│   └── enroll_faces.py       # Script to capture and save user faces
-│
-├── requirements.txt          # Python dependencies
-└── README.md                 # Project documentation
-```
+### Prerequisites
 
-## ⚙️ prerequisites
+*   Python 3.9 or higher
+*   A webcam or recorded video files for attendance
 
-Ensure you have Python installed on your system. You can download it from [python.org](https://www.python.org/).
+### Installation
 
-## 📥 Installation
-
-1.  **Clone the repository:**
+1.  **Clone the Repository**
     ```bash
     git clone https://github.com/Rishiofficial432-432/college-attendance-system.git
     cd college-attendance-system
     ```
 
-2.  **Install dependencies:**
+2.  **Set Up Environment**
+    ```bash
+    python -m venv venv
+    source venv/bin/activate  # On Windows: venv\Scripts\activate
+    ```
+
+3.  **Install Dependencies**
     ```bash
     pip install -r requirements.txt
     ```
 
-## 🖥️ Usage
+### Running the App
 
-### 1. Enroll a New Student
-To capture face data for a new student, run the **enrollment script**.
+```bash
+streamlit run app.py
+```
 
-1.  Open `attendance_system/enroll_faces.py`.
-2.  Update the `PERSON_ID` variable with the student's unique ID or Name:
-    ```python
-    PERSON_ID = "101_JohnDoe"
-    ```
-3.  Run the script:
-    ```bash
-    python attendance_system/enroll_faces.py
-    ```
-4.  Look straight at the webcam. The script will automatically capture **30 images** and save them in the `dataset/` folder.
-5.  Press `ESC` to exit manually if needed.
+## 📖 Usage Guide
 
-### 2. (Next Steps) Train & Recognize
-*Current version supports enrollment. Future updates will include the training model and recognition script.*
+1.  **Manage Courses**: Create your course categories (e.g., CS101 - Machine Learning).
+2.  **Enrol Students**: Upload a clear photo of each student to generate their unique biometric embedding.
+3.  **Create Session**: Define a class session for a specific date and time.
+4.  **Upload Video**: Upload the recorded class video. The system will sample frames and identify students automatically.
+5.  **Review & Export**: Check the Dashboard or Audit Log to verify results and download the CSV report.
+
+## 🔒 Privacy & Security
+
+This project is designed with privacy in mind. Face images are stored locally and are excluded from version control via `.gitignore`. Only mathematical embeddings are used for recognition.
 
 ## 🤝 Contributing
 
-Contributions are welcome! Feel free to fork the repo and submit a pull request.
+Contributions are welcome! Please feel free to submit a Pull Request or open an issue for feature requests.
 
 ## 📜 License
 
-This project is open-source and available under the [MIT License](LICENSE).
+Distributed under the MIT License. See `LICENSE` for more information.

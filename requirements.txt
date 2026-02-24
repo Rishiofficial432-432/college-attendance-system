@@ -1,11 +1,16 @@
-streamlit>=1.30
-sqlalchemy>=2.0
+# Core Dependencies
+streamlit>=1.30.0
+sqlalchemy>=2.0.0
+pandas
+numpy
+
+# Computer Vision & Face Recognition
 opencv-python
 insightface>=0.7.3
-onnxruntime>=1.16
-pillow
-numpy
-pandas
+onnxruntime>=1.16.0
+Pillow
+
+# Utilities
 pyyaml
 tqdm
 apscheduler
